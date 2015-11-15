@@ -1,15 +1,13 @@
 #!/usr/bin/python
 #
 #  build.py - create a VirtualBox image running Debian Jessie
-
-
 #
 
 import os
 import sys
 import time
 
-__version__='0.1'
+__version__='0.2'
 
 # XSysroot details
 xsysroot_profile='vbox-debian'
@@ -26,8 +24,8 @@ extra_pkgs='less,nano,ssh,psmisc,ifplugd,curl,htop,binutils,isc-dhcp-client,iput
 kernel_image='linux-image-686-pae'
 root_password='thor'
 grub_bootfile='grub-40-boot.cfg'
-hostname='vbox-debian'
-motd='Welcome to VirtualBox Debian {}'.format(__version__)
+hostname='debianvm'
+motd='Welcome to Debian VM {}'.format(__version__)
 
 
 def import_xsysroot():
@@ -60,7 +58,7 @@ if __name__=='__main__':
         sys.exit(1)
 
     print '>>> Creating empty image for OS at {}'.format(time.ctime())
-    success=xsysroot.create_image('{} ext3:1000'.format(backing_image), nbdev=nbdev)
+    success=xsysroot.create_image('{} ext4:1000'.format(backing_image), nbdev=nbdev)
     if success:
         # Baptize the image for first time work
         if not xvbox.renew():
@@ -72,7 +70,7 @@ if __name__=='__main__':
         rc=os.system(expanded_debootstrap)
         if rc:
             print 'Error running debootstrap - aborting'
-            sys.exiy(1)
+            sys.exit(1)
     else:
         sys.exit(1)
 
@@ -93,6 +91,8 @@ if __name__=='__main__':
     # Create an entry for Grub, because the image will be seen as a SCSI disk
     print '>>> Customizing Grub to boot on a Virtualbox SCSI drive'
     os.system('sudo cp {} {}/etc/grub.d/40_custom'.format(grub_bootfile, xvbox.query('sysroot')))
+    xvbox.execute('rm /etc/grub.d/10_linux')
+    xvbox.execute('rm /etc/grub.d/20_linux_xen')
     xvbox.execute('update-grub')
 
     # Stop the IRQ service. Force root password. Create a hostname, login message
@@ -104,6 +104,7 @@ if __name__=='__main__':
     xvbox.edfile('/etc/hosts', '127.0.0.1   localhost')
     xvbox.edfile('/etc/hosts', '127.0.0.1   {}'.format(hostname), append=True)
     xvbox.edfile('/etc/motd', motd)
+    xvbox.edfile('/etc/debianvm_version', __version__)
 
     # setup ethernet to get a dhcp lease
     interfaces_file='/etc/network/interfaces'
