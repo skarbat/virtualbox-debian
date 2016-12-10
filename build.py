@@ -6,19 +6,19 @@
 import os
 import sys
 import time
+import xsysroot
 
-__version__='0.2'
+__version__='0.3'
 
 # XSysroot details
 xsysroot_profile='vbox-debian'
-nbdev='/dev/nbd0' # it will be used to create and partition the new image
 backing_image=os.path.join(os.path.expanduser('~'), 'osimages/vbox-debian.img')
 virtualbox_image='./{}-{}.vdi'.format(xsysroot_profile, __version__)
 
 # VirtualBox image details
 arch='i386'
 suite='jessie'
-repo_url='ftp://ftp.es.debian.org/debian'
+repo_url='ftp://ftp.uk.debian.org/debian'
 cmd_debootstrap='sudo debootstrap --no-check-gpg --verbose --include {} --variant=minbase --arch={} {} {} {}'
 extra_pkgs='less,nano,ssh,psmisc,ifplugd,curl,htop,binutils,isc-dhcp-client,iputils-ping,net-tools,sudo'
 kernel_image='linux-image-686-pae'
@@ -28,50 +28,31 @@ hostname='debianvm'
 motd='Welcome to Debian VM {}'.format(__version__)
 
 
-def import_xsysroot():
-    '''
-    Find path to XSysroot and import it
-    You need to create a symlink xsysroot.py -> xsysroot
-    '''
-    which_xsysroot=os.popen('which xsysroot').read().strip()
-    if not which_xsysroot:
-        print 'Could not find xsysroot tool'
-        print 'Please install from https://github.com/skarbat/xsysroot'
-        return None
-    else:
-        print 'xsysroot found at: {}'.format(which_xsysroot)
-        sys.path.append(os.path.dirname(which_xsysroot))
-        import xsysroot
-        return xsysroot
-
 
 if __name__=='__main__':
 
     if os.path.isfile(backing_image):
-        print 'backing image exists - aborting:', backing_image
+        print 'backing image already exists - aborting:', backing_image
         sys.exit(1)
 
-    xsysroot=import_xsysroot()
     xvbox=xsysroot.XSysroot(profile=xsysroot_profile)
-
     if xvbox.is_mounted() and not xvbox.umount():
         sys.exit(1)
 
     print '>>> Creating empty image for OS at {}'.format(time.ctime())
-    success=xsysroot.create_image('{} ext4:1000'.format(backing_image), nbdev=nbdev)
-    if success:
-        # Baptize the image for first time work
-        if not xvbox.renew():
-            sys.exit(1)
+    if not xsysroot.create_image('{} ext4:1000'.format(backing_image)):
+        sys.exit(1)
 
-        expanded_debootstrap=cmd_debootstrap.format(extra_pkgs, arch, suite, xvbox.query('sysroot'), repo_url)
-        print '>>> Installing core OS... '
-        print expanded_debootstrap
-        rc=os.system(expanded_debootstrap)
-        if rc:
-            print 'Error running debootstrap - aborting'
-            sys.exit(1)
-    else:
+    # Baptize the image for first time work
+    if not xvbox.renew():
+        sys.exit(1)
+
+    expanded_debootstrap=cmd_debootstrap.format(extra_pkgs, arch, suite, xvbox.query('sysroot'), repo_url)
+    print '>>> Installing core OS... '
+    print expanded_debootstrap
+    rc=os.system(expanded_debootstrap)
+    if rc:
+        print 'Error running debootstrap - aborting'
         sys.exit(1)
 
     # remount image so that /dev and cousins are now correctly mapped to the host
@@ -81,7 +62,8 @@ if __name__=='__main__':
 
     # Install a linux kernel
     print '>>> Installing a kernel and a boot loader'
-    xvbox.execute('/bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y --force-yes grub-pc {}"'.format(kernel_image))
+    install_command='DEBIAN_FRONTEND=noninteractive apt-get install -y --force-yes grub-pc {}'.format(kernel_image)
+    xvbox.execute('/bin/bash -c "{}"'.format(install_command))
 
     # Along with grub PC Bios version, so VirtualBox can boot it up
     disk_device=xvbox.query('nbdev')
